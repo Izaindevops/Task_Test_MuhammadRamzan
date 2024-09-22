@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PMAMP - PhpMyadmin with Apache Mysql and Php
 
 Docker with Apache, PHP, MySQL, phpMyAdmin
@@ -239,3 +240,7 @@ RUN apt-get update && apt-get install -y \
   && docker-php-ext-install pdo pdo_mysql
 
 ```
+=======
+# Task_Test_MuhammadRamzan
+its a test project for Php
+>>>>>>> origin/main
