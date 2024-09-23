@@ -1,4 +1,5 @@
 version: "3.8"
+
 services:
   traefik:
     image: "traefik:2.5.6"
@@ -7,11 +8,17 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.metrics.address=:8082"  # Define the metrics entry point
+      - "--metrics.prometheus=true"  # Enable Prometheus metrics
+      - "--metrics.prometheus.entryPoint=metrics"  # Set entry point for metrics
     ports:
-      - "80:80"
-      - "8081:8080"  # Changed from 8080:8080 to 8081:8080
+      - "80:80"      # HTTP
+      - "8081:8080"  # Traefik dashboard
+      - "8082:8082"  # Expose metrics endpoint on port 8082
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefikNetwork  # Ensure Traefik is on the correct network
 
   php-apache:
     build:
@@ -32,7 +39,6 @@ services:
     depends_on:
       - "traefik"
     volumes:
-      #- "./mysql_seed.sql:/docker-entrypoint-initdb.d/mysql_seed.sql"
       - "./dbdata:/var/lib/mysql"
     command:
       - "--default-authentication-plugin=mysql_native_password"
@@ -48,18 +54,38 @@ services:
     image: "phpmyadmin/phpmyadmin"
     depends_on:
       - "mysql"
-    links:
-      - "mysql"
     environment:
       PMA_HOST: "mysql"
       PMA_PORT: "3306"
       UPLOAD_LIMIT: "256M"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.phpmyadmin.rule=Host(`pma.localhost`, `pma.lvh.me`)"  # Changed router name to avoid conflict
+      - "traefik.http.routers.phpmyadmin.rule=Host(`pma.localhost`, `pma.lvh.me`)"
       - "traefik.http.routers.phpmyadmin.entrypoints=web"
 
+  prometheus:
+    image: "prom/prometheus"
+    container_name: prometheus
+    ports:
+      - "9091:9090"  # Expose Prometheus UI
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - traefikNetwork  # Ensure Prometheus is on the correct network
+
+  grafana:
+    image: "grafana/grafana"
+    container_name: grafana
+    ports:
+      - "3000:3000"  # Expose Grafana UI
+    depends_on:
+      - prometheus
+    networks:
+      - traefikNetwork  # Ensure Grafana is on the correct network
+
 networks:
-  default:
-    name: "traefikNetwork"
+  traefikNetwork:
+    driver: bridge
 
