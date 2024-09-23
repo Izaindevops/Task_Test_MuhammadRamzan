@@ -238,6 +238,112 @@ RUN apt-get update && apt-get install -y \
   && pecl install imagick && docker-php-ext-enable imagick \
   && docker-php-ext-install mysqli \
   && docker-php-ext-install pdo pdo_mysql
+Run local Container for monitring
+ https://hub.docker.com/r/prom/prometheus
+https://hub.docker.com/r/grafana/grafana
+
+update docker-compose-yml file
+
+version: "3.8"
+
+services:
+  traefik:
+    image: "traefik:2.5.6"
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.metrics.address=:8082"  # Define the metrics entry point
+      - "--metrics.prometheus=true"  # Enable Prometheus metrics
+      - "--metrics.prometheus.entryPoint=metrics"  # Set entry point for metrics
+    ports:
+      - "80:80"      # HTTP
+      - "8081:8080"  # Traefik dashboard
+      - "8082:8082"  # Expose metrics endpoint on port 8082
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - traefikNetwork  # Ensure Traefik is on the correct network
+
+  php-apache:
+    build:
+      context: .
+    depends_on:
+      - "traefik"
+      - "mysql"
+    volumes:
+      - "./www:/var/www/html/"
+      - "./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.php-apache.rule=Host(`localhost`, `lvh.me`, `pmamp.lvh.me`, `127.0.0.1`)"
+      - "traefik.http.routers.php-apache.entrypoints=web"
+
+  mysql:
+    image: "mysql:8.0.27"
+    depends_on:
+      - "traefik"
+    volumes:
+      - "./dbdata:/var/lib/mysql"
+    command:
+      - "--default-authentication-plugin=mysql_native_password"
+    environment:
+      MYSQL_ROOT_PASSWORD: "rootPASS"
+      MYSQL_DATABASE: "dbase"
+      MYSQL_USER: "dbuser"
+      MYSQL_PASSWORD: "dbpass"
+    labels:
+      - "traefik.enable=false"
+
+  phpmyadmin:
+    image: "phpmyadmin/phpmyadmin"
+    depends_on:
+      - "mysql"
+    environment:
+      PMA_HOST: "mysql"
+      PMA_PORT: "3306"
+      UPLOAD_LIMIT: "256M"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.phpmyadmin.rule=Host(`pma.localhost`, `pma.lvh.me`)"
+      - "traefik.http.routers.phpmyadmin.entrypoints=web"
+
+  prometheus:
+    image: "prom/prometheus"
+    container_name: prometheus
+    ports:
+      - "9091:9090"  # Expose Prometheus UI
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - traefikNetwork  # Ensure Prometheus is on the correct network
+
+  grafana:
+    image: "grafana/grafana"
+    container_name: grafana
+    ports:
+      - "3000:3000"  # Expose Grafana UI
+    depends_on:
+      - prometheus
+    networks:
+      - traefikNetwork  # Ensure Grafana is on the correct network
+
+networks:
+  traefikNetwork:
+    driver: bridge
+
+**promethues.yml**
+scrape_configs:
+  - job_name: 'traefik'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['traefik:8082']
+
+
+
 
 ```
 =======
